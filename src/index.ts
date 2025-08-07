@@ -1,99 +1,102 @@
 /**
- * LLM Chat Application Template
+ * Educational LLM Chat Application Template with Login/Signup
  *
- * A simple chat application using Cloudflare Workers AI.
- * This template demonstrates how to implement an LLM-powered chat interface with
- * streaming responses using Server-Sent Events (SSE).
+ * Enhanced version of a simple chat app using Cloudflare Workers AI.
+ * Includes authentication and an instructional-style assistant.
  *
  * @license MIT
  */
 import { Env, ChatMessage } from "./types";
 
-// Model ID for Workers AI model
-// https://developers.cloudflare.com/workers-ai/models/
 const MODEL_ID = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 
-// Default system prompt
 const SYSTEM_PROMPT =
-  "You are a helpful, friendly assistant. Provide concise and accurate responses.";
+  "You are an educational assistant who helps students learn. Do not give direct answers. Instead, guide students through the process, offering hints, explanations, and encouragement to find the answer on their own.";
 
 export default {
-  /**
-   * Main request handler for the Worker
-   */
-  async fetch(
-    request: Request,
-    env: Env,
-    ctx: ExecutionContext,
-  ): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
 
-    // Handle static assets (frontend)
     if (url.pathname === "/" || !url.pathname.startsWith("/api/")) {
       return env.ASSETS.fetch(request);
     }
 
-    // API Routes
     if (url.pathname === "/api/chat") {
-      // Handle POST requests for chat
       if (request.method === "POST") {
         return handleChatRequest(request, env);
       }
-
-      // Method not allowed for other request types
       return new Response("Method not allowed", { status: 405 });
     }
 
-    // Handle 404 for unmatched routes
+    if (url.pathname === "/api/login" && request.method === "POST") {
+      return handleLogin(request);
+    }
+
+    if (url.pathname === "/api/signup" && request.method === "POST") {
+      return handleSignup(request);
+    }
+
     return new Response("Not found", { status: 404 });
   },
 } satisfies ExportedHandler<Env>;
 
-/**
- * Handles chat API requests
- */
-async function handleChatRequest(
-  request: Request,
-  env: Env,
-): Promise<Response> {
+async function handleChatRequest(request: Request, env: Env): Promise<Response> {
   try {
-    // Parse JSON request body
-    const { messages = [] } = (await request.json()) as {
+    const { messages = [], token } = (await request.json()) as {
       messages: ChatMessage[];
+      token?: string;
     };
 
-    // Add system prompt if not present
+    if (!validateToken(token)) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
     if (!messages.some((msg) => msg.role === "system")) {
       messages.unshift({ role: "system", content: SYSTEM_PROMPT });
     }
 
     const response = await env.AI.run(
       MODEL_ID,
-      {
-        messages,
-        max_tokens: 1024,
-      },
-      {
-        returnRawResponse: true,
-        // Uncomment to use AI Gateway
-        // gateway: {
-        //   id: "YOUR_GATEWAY_ID", // Replace with your AI Gateway ID
-        //   skipCache: false,      // Set to true to bypass cache
-        //   cacheTtl: 3600,        // Cache time-to-live in seconds
-        // },
-      },
+      { messages, max_tokens: 1024 },
+      { returnRawResponse: true }
     );
 
-    // Return streaming response
     return response;
   } catch (error) {
     console.error("Error processing chat request:", error);
-    return new Response(
-      JSON.stringify({ error: "Failed to process request" }),
-      {
-        status: 500,
-        headers: { "content-type": "application/json" },
-      },
-    );
+    return new Response(JSON.stringify({ error: "Failed to process request" }), {
+      status: 500,
+      headers: { "content-type": "application/json" },
+    });
   }
+}
+
+async function handleLogin(request: Request): Promise<Response> {
+  const { username, password } = await request.json();
+  // Replace with secure check
+  if (username === "student" && password === "learn123") {
+    return new Response(JSON.stringify({ token: "valid_token" }), {
+      headers: { "content-type": "application/json" },
+    });
+  }
+  return new Response(JSON.stringify({ error: "Invalid credentials" }), {
+    status: 403,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+async function handleSignup(request: Request): Promise<Response> {
+  const { username, password } = await request.json();
+  // Simulate saving user (replace with actual storage)
+  console.log(`Signup request: ${username}`);
+  return new Response(JSON.stringify({ success: true }), {
+    headers: { "content-type": "application/json" },
+  });
+}
+
+function validateToken(token?: string): boolean {
+  return token === "valid_token"; // Replace with real token validation
 }
