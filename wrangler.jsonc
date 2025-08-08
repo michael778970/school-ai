@@ -1,13 +1,10 @@
-name = "edu-assistant"
-main = "src/index.ts"
-compatibility_date = "2025-08-08"
+{
+  "name": "edu-assistant",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-08-08",
 
-[vars]
-# You can put environment variables here if needed
-
-[[ai]]
-binding = "AI"
-
-[[r2_buckets]]
-binding = "ASSETS"
-bucket_name = "your-static-assets-bucket"
+  // Workers AI binding
+  "ai": {
+    "binding": "AI"
+  }
+}
