@@ -4,18 +4,22 @@ export default {
   async fetch(request: Request, env: any) {
     const url = new URL(request.url);
 
-    console.log(`Request to ${url.pathname}`);
-
-    // Serve index.html for root or /index.html requests
-    if (url.pathname === "/" || url.pathname === "/index.html") {
-      if (env.ASSETS) {
-        // Use just URL string here, not a Request copying the original request
-        return env.ASSETS.fetch(new URL("/index.html", request.url).toString());
-      }
-      return new Response("Index not found", { status: 404 });
+    if (url.pathname === "/") {
+      const html = `
+        <html>
+          <head><title>Dummy Edu Assistant</title></head>
+          <body>
+            <h1>Welcome to Dummy Edu Assistant!</h1>
+            <p>Use <code>/api/chat</code> POST endpoint with a valid token ("valid_token") to get a dummy response.</p>
+          </body>
+        </html>
+      `;
+      return new Response(html, {
+        headers: { "Content-Type": "text/html" },
+      });
     }
 
-    // Handle API routes
+    // API Routes
     if (url.pathname === "/api/chat" && request.method === "POST") {
       return handleChatRequest(request);
     }
@@ -28,13 +32,7 @@ export default {
       return handleSignup(request);
     }
 
-    // Serve other assets if available
-    if (env.ASSETS) {
-      const assetResponse = await env.ASSETS.fetch(request);
-      if (assetResponse.status !== 404) return assetResponse;
-    }
-
-    // Default 404 for everything else
+    // Anything else = 404
     return new Response("Not found", { status: 404 });
   }
 };
@@ -50,7 +48,7 @@ async function handleChatRequest(request: Request) {
       });
     }
 
-    // Dummy chat response ignoring input
+    // Dummy reply ignoring input
     return new Response(
       JSON.stringify({
         id: "dummy-1",
