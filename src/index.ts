@@ -4,13 +4,18 @@ export default {
   async fetch(request: Request, env: any) {
     const url = new URL(request.url);
 
+    console.log(`Request to ${url.pathname}`);
+
+    // Serve index.html for root or /index.html requests
     if (url.pathname === "/" || url.pathname === "/index.html") {
       if (env.ASSETS) {
-        return env.ASSETS.fetch(new Request(new URL("/index.html", request.url).toString(), request));
+        // Use just URL string here, not a Request copying the original request
+        return env.ASSETS.fetch(new URL("/index.html", request.url).toString());
       }
       return new Response("Index not found", { status: 404 });
     }
 
+    // Handle API routes
     if (url.pathname === "/api/chat" && request.method === "POST") {
       return handleChatRequest(request);
     }
@@ -23,11 +28,13 @@ export default {
       return handleSignup(request);
     }
 
+    // Serve other assets if available
     if (env.ASSETS) {
       const assetResponse = await env.ASSETS.fetch(request);
       if (assetResponse.status !== 404) return assetResponse;
     }
 
+    // Default 404 for everything else
     return new Response("Not found", { status: 404 });
   }
 };
@@ -43,7 +50,7 @@ async function handleChatRequest(request: Request) {
       });
     }
 
-    // Just a fun dummy response ignoring input:
+    // Dummy chat response ignoring input
     return new Response(
       JSON.stringify({
         id: "dummy-1",
