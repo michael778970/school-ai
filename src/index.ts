@@ -1,107 +1,121 @@
-export interface Env {
-  AI: any; // Workers AI binding (set in wrangler.toml)
-  ASSETS: Fetcher; // Static asset binding (optional, for serving files)
-}
-
-const MODEL_ID = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
-
-const SYSTEM_PROMPT = `
-You are an educational assistant. Help the user learn by guiding them
-to find answers themselves, rather than giving direct solutions.
-`;
-
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
-    const url = new URL(request.url);
+  async fetch(request, env, ctx) {
+    try {
+      const url = new URL(request.url);
 
-    // Serve static files if it's not an API request
-    if (!url.pathname.startsWith("/api")) {
-      return env.ASSETS.fetch(request);
+      if (url.pathname === "/" || !url.pathname.startsWith("/api/")) {
+        // Serve static assets if available
+        if (env.ASSETS) {
+          try {
+            const assetResponse = await env.ASSETS.fetch(request);
+            if (assetResponse.status !== 404) return assetResponse;
+          } catch (e) {
+            console.error("Asset fetch failed:", e);
+          }
+        }
+        return new Response("Not found", { status: 404 });
+      }
+
+      if (url.pathname === "/api/chat" && request.method === "POST") {
+        return await handleChatRequest(request, env);
+      }
+      if (url.pathname === "/api/login" && request.method === "POST") {
+        return await handleLogin(request);
+      }
+      if (url.pathname === "/api/signup" && request.method === "POST") {
+        return await handleSignup(request);
+      }
+
+      return new Response("Not found", { status: 404 });
+    } catch (err) {
+      console.error("Worker crashed:", err);
+      return new Response(
+        JSON.stringify({ error: "Internal Server Error", details: err.message || String(err) }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
+      );
     }
-
-    // API routes
-    if (url.pathname === "/api/chat" && request.method === "POST") {
-      return handleChatRequest(request, env);
-    }
-
-    if (url.pathname === "/api/login" && request.method === "POST") {
-      return handleLogin(request);
-    }
-
-    if (url.pathname === "/api/signup" && request.method === "POST") {
-      return handleSignup(request);
-    }
-
-    return new Response("Not Found", { status: 404 });
-  },
+  }
 };
 
-// ----------------- API HANDLERS -----------------
-
-async function handleChatRequest(request: Request, env: Env) {
+async function handleChatRequest(request, env) {
   try {
-    const body = await request.json().catch(() => ({}));
-    const messages = body.messages || [];
-    const token = body.token;
+    const { messages = [], token } = await request.json();
 
     if (!validateToken(token)) {
-      return jsonResponse({ error: "Unauthorized" }, 401);
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" }
+      });
     }
 
-    // Add system prompt if not already present
-    if (!messages.some((m: any) => m.role === "system")) {
+    // Inject system prompt if missing
+    if (!messages.some(msg => msg.role === "system")) {
       messages.unshift({ role: "system", content: SYSTEM_PROMPT });
     }
 
-    if (!env?.AI?.run) {
-      console.error("AI binding not available");
-      return jsonResponse(
-        { error: "AI binding missing. Check wrangler.toml." },
-        500
-      );
+    if (!env.AI) {
+      return new Response(JSON.stringify({ error: "AI binding missing" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" }
+      });
     }
 
-    const aiResult = await env.AI.run(
+    const response = await env.AI.run(
       MODEL_ID,
       { messages, max_tokens: 1024 },
       { returnRawResponse: true }
     );
 
-    // Forward raw response if provided
-    if (aiResult instanceof Response) {
-      return aiResult;
+    return response;
+
+  } catch (err) {
+    console.error("Chat request error:", err);
+    return new Response(
+      JSON.stringify({ error: "Chat processing failed", details: err.message || String(err) }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
+  }
+}
+
+async function handleLogin(request) {
+  try {
+    const { username, password } = await request.json();
+
+    if (username === "student" && password === "learn123") {
+      return new Response(JSON.stringify({ token: "valid_token" }), {
+        headers: { "Content-Type": "application/json" }
+      });
     }
-
-    return jsonResponse(aiResult);
-  } catch (err: any) {
-    console.error("Chat error:", err);
-    return jsonResponse({ error: err?.message || String(err) }, 500);
+    return new Response(JSON.stringify({ error: "Invalid credentials" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" }
+    });
+  } catch (err) {
+    return new Response(
+      JSON.stringify({ error: "Login failed", details: err.message || String(err) }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
   }
 }
 
-async function handleLogin(request: Request) {
-  const { username, password } = await request.json();
-  if (username === "student" && password === "learn123") {
-    return jsonResponse({ token: "valid_token" });
+async function handleSignup(request) {
+  try {
+    const { username, password } = await request.json();
+    console.log(`Signup request: ${username}`);
+    return new Response(JSON.stringify({ success: true }), {
+      headers: { "Content-Type": "application/json" }
+    });
+  } catch (err) {
+    return new Response(
+      JSON.stringify({ error: "Signup failed", details: err.message || String(err) }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
   }
-  return jsonResponse({ error: "Invalid credentials" }, 401);
 }
 
-async function handleSignup(request: Request) {
-  // In production, save user to a database
-  const { username } = await request.json();
-  return jsonResponse({ message: `User '${username}' registered successfully.` });
-}
-
-// ----------------- HELPERS -----------------
-
-function validateToken(token: string) {
+function validateToken(token) {
   return token === "valid_token";
 }
 
-function jsonResponse(obj: any, status = 200) {
-  return new Response(JSON.stringify(obj), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
-}
+const MODEL_ID = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
+const SYSTEM_PROMPT = "You are an educational assistant who helps students learn. Do not give direct answers. Instead, guide students through the process, offering hints, explanations, and encouragement to find the answer on their own.";
