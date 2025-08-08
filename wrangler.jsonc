@@ -1,12 +1,7 @@
 {
-  "name": "edu-assistant",
+  "name": "edu-assistant-dummy",
   "main": "src/index.ts",
   "compatibility_date": "2025-08-08",
-
-  "ai": {
-    "binding": "AI"
-  },
-
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",
